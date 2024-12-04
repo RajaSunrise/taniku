@@ -1,0 +1,64 @@
+services:
+  api:
+    image: fastapi-template:dev
+    build:
+      context: .
+      target: dev
+    command:
+      bash -c "uv run alembic upgrade head && uvicorn app.main:app --host
+      0.0.0.0 --port 8001 --reload"
+    volumes:
+      - .:/app/src/
+    env_file:
+      - .env
+    environment:
+      - DB_ADDRESS=postgres
+    ports:
+      - 8001:8001
+    networks:
+      - api-network
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:15.6-bullseye
+    hostname: postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_TEST_DB: ${TEST_DB_NAME}
+    volumes:
+      - api-db-data:/var/lib/postgresql/data
+      - ./docker_support/create-test-db.sh:/docker-entrypoint-initdb.d/create-test-db.sh
+    ports:
+      - 5433:${DB_PORT}
+    networks:
+      - api-network
+    healthcheck:
+      test: pg_isready -U ${DB_USER} -d ${DB_NAME}
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  cache:
+    image: redis/redis-stack:latest
+    restart: always
+    ports:
+      - "6379:6379"
+      - "8002:8001"
+    volumes:
+      - cache:/data
+    networks:
+      - api-network
+
+volumes:
+  api-db-data:
+    name: api-db-data
+  cache:
+    driver: local
+
+networks:
+  api-network:
+    name: fastapi-network
